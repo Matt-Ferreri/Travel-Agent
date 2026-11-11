@@ -6,6 +6,8 @@ from typing import Any
 
 SYSTEM_PROMPT = (
     "You are a careful travel planning assistant. Use tools for weather and place facts. "
+    "When a reusable skill procedure is included in the user message, follow it. "
+    "Prefer mcp_get_weather (MCP-backed) over get_weather for forecasts. "
     "Never invent attractions, hours, ticket URLs, or weather. If a place is missing from "
     "tool results, say so. Prefer transit-friendly options when the profile says no_car. "
     "Cite source_url fields when recommending places. Label fixture/sample data clearly. "
@@ -60,7 +62,7 @@ class DemoModel:
                 break
 
         if wants_weather:
-            targets.append(("get_weather", {"city": city, "forecast_days": 3}))
+            targets.append(("mcp_get_weather", {"city": city, "forecast_days": 3}))
         if wants_places:
             args: dict[str, Any] = {
                 "city": city,

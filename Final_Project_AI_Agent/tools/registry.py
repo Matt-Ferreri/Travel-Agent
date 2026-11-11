@@ -19,32 +19,45 @@ CITY_COORDS = {
     "nyc": (40.7128, -74.0060),
 }
 
+_WEATHER_PARAMS = {
+    "type": "object",
+    "properties": {
+        "city": {
+            "type": "string",
+            "description": "City name, e.g. Boston",
+        },
+        "forecast_days": {
+            "type": "integer",
+            "description": "Number of forecast days (1-7)",
+            "minimum": 1,
+            "maximum": 7,
+        },
+    },
+    "required": ["city"],
+    "additionalProperties": False,
+}
+
 TOOL_SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "mcp_get_weather",
+            "description": (
+                "Preferred weather tool. Calls get_weather through a real MCP stdio server "
+                "(mcp_integration.weather_server), then returns the forecast. "
+                "Uses Open-Meteo live or a saved fixture when WEATHER_MODE=fixture."
+            ),
+            "parameters": _WEATHER_PARAMS,
+        },
+    },
     {
         "type": "function",
         "function": {
             "name": "get_weather",
             "description": (
-                "Get a short weather forecast for a city using Open-Meteo "
-                "(or a saved fixture when WEATHER_MODE=fixture)."
+                "Direct in-process weather lookup (no MCP). Prefer mcp_get_weather when available."
             ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "city": {
-                        "type": "string",
-                        "description": "City name, e.g. Boston",
-                    },
-                    "forecast_days": {
-                        "type": "integer",
-                        "description": "Number of forecast days (1-7)",
-                        "minimum": 1,
-                        "maximum": 7,
-                    },
-                },
-                "required": ["city"],
-                "additionalProperties": False,
-            },
+            "parameters": _WEATHER_PARAMS,
         },
     },
     {
@@ -217,6 +230,13 @@ def lookup_places(
 
 
 def execute_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
+    if name == "mcp_get_weather":
+        from mcp_integration.client import call_mcp_weather
+
+        return call_mcp_weather(
+            city=str(args.get("city", "")),
+            forecast_days=int(args.get("forecast_days") or 3),
+        )
     if name == "get_weather":
         return get_weather(
             city=str(args.get("city", "")),

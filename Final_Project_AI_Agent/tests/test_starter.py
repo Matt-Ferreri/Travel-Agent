@@ -7,10 +7,12 @@ from pathlib import Path
 os.environ.setdefault("AGENT_MODE", "demo")
 os.environ.setdefault("WEATHER_MODE", "fixture")
 
-from agent import run_agent
+from agent import run_agent, format_execution_tree
 from permissions.policy import check_tool
 from memory.store import load_profile, save_profile
-from tools.registry import lookup_places, get_weather
+from tools.registry import lookup_places, get_weather, execute_tool
+from skills.loader import select_skill_for_prompt, list_skills
+from mcp_integration.client import list_mcp_tools
 
 
 class TravelBaselineTests(unittest.TestCase):
@@ -19,8 +21,15 @@ class TravelBaselineTests(unittest.TestCase):
         self.assertEqual(result["stopped_reason"], "completed")
         self.assertTrue(result.get("trace_id"))
         tools = [e["tool"] for e in result["trace"] if e.get("event") == "tool_call"]
-        self.assertEqual(tools, ["get_weather", "lookup_places"])
+        self.assertEqual(tools, ["mcp_get_weather", "lookup_places"])
         self.assertIn("demo-mode", result["answer"].lower())
+        skill_events = [e for e in result["trace"] if e.get("event") == "skill_invoke"]
+        self.assertEqual(len(skill_events), 1)
+        self.assertEqual(skill_events[0]["skill"], "itinerary_planning")
+        self.assertIn("mcp_get_weather", result["execution_tree"])
+        weather = next(e for e in result["trace"] if e.get("tool") == "mcp_get_weather")
+        self.assertEqual(weather["status"], "ok")
+        self.assertIn("mcp", weather.get("result") or {})
 
     def test_non_tool_question(self):
         tools = [e for e in run_agent("Hello")["trace"] if e.get("event") == "tool_call"]
@@ -39,7 +48,35 @@ class TravelBaselineTests(unittest.TestCase):
         self.assertEqual(check_tool("book_tickets").status, "approval_required")
         self.assertEqual(check_tool("execute_shell").status, "denied")
         self.assertEqual(check_tool("get_weather").status, "allowed")
+        self.assertEqual(check_tool("mcp_get_weather").status, "allowed")
         self.assertEqual(check_tool("lookup_places").status, "allowed")
+
+    def test_skill_loader(self):
+        self.assertIn("itinerary_planning", list_skills())
+        skill = select_skill_for_prompt("Plan a Boston museum weekend under budget")
+        self.assertIsNotNone(skill)
+        self.assertEqual(skill["name"], "itinerary_planning")
+        self.assertIsNone(select_skill_for_prompt("Write a poem about penguins"))
+
+    def test_mcp_list_and_weather(self):
+        tools = list_mcp_tools()
+        self.assertTrue(any(t.get("name") == "get_weather" for t in tools))
+        result = execute_tool("mcp_get_weather", {"city": "Boston", "forecast_days": 3})
+        self.assertTrue(result.get("is_fixture"))
+        self.assertIn("mcp", result)
+        self.assertIn("daily", result)
+
+    def test_execution_tree_format(self):
+        tree = format_execution_tree(
+            [
+                {"event": "run_start", "input_summary": "hi"},
+                {"event": "skill_invoke", "skill": "itinerary_planning"},
+                {"event": "tool_call", "tool": "mcp_get_weather", "status": "ok", "permission": "allowed", "result_summary": {}, "result": {"ok": True}},
+                {"event": "run_end", "status": "completed", "duration_ms": 1},
+            ]
+        )
+        self.assertIn("skill_invoke", tree)
+        self.assertIn("mcp_get_weather", tree)
 
     def test_profile_persists(self):
         with tempfile.TemporaryDirectory() as td:

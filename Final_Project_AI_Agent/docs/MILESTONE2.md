@@ -5,10 +5,11 @@ Team: Matthew Ferreri, Aashra Amatya
 ## What works now
 
 - Real-LLM path: set `AGENT_MODE=openai` + `OPENAI_API_KEY` in `.env`
-- Tools: `get_weather` (Open-Meteo live or fixture), `lookup_places` (local curated dataset)
+- Tools: `mcp_get_weather` (MCP stdio server), `get_weather` (direct), `lookup_places`
+- Repeatable skill: `skills/itinerary_planning/SKILL.md` auto-loaded for plan/trip prompts
 - Permissions gate before tool execution
 - Persistent synthetic trip preferences (`data/profile.json` when saved)
-- Trace with `trace_id`, timestamps, LLM/tool/permission/memory events (`data/traces/`)
+- Execution tree + JSON trace (`data/traces/*.tree.txt` and `*.json`)
 - First 6 evaluation prompts in `eval/cases_m2.json`
 
 ## Run commands (Windows PowerShell)
@@ -29,7 +30,9 @@ Sample request:
 
 > Plan a weekend in Boston for 2 adults and 1 child: museums and outdoors, no car. Check weather and suggest places.
 
-After a successful openai run, keep the JSON under `data/traces/` for submission.
+After a successful openai run, submit both:
+- `data/traces/<trace_id>.json` (full event log + tool results)
+- `data/traces/<trace_id>.tree.txt` (readable execution tree)
 
 ## Architecture diagram labels (cite in your drawing)
 
@@ -37,11 +40,11 @@ After a successful openai run, keep the JSON under `data/traces/` for submission
 |---|-----|-----------------|--------|
 | 1 | User / Streamlit UI | `app.py` | Built |
 | 2 | Main LLM agent loop + step stop | `agent.py` `run_agent` | Built |
-| 3a | Tool: weather (Open-Meteo / fixture) | `tools/registry.py` `get_weather` | Built |
+| 3a | Tool: weather (direct + MCP) | `tools/registry.py` / `mcp_get_weather` | Built |
 | 3b | Tool: places lookup | `tools/registry.py` `lookup_places` | Built |
-| 4 | Destination research subagent | `subagents/research_agent.py` | Planned (M3) |
-| 5 | Itinerary planning skill | `skills/itinerary_planning/SKILL.md` | Planned (M3) |
-| 6 | MCP client ↔ MCP server | `mcp_integration/client.py` | Planned (M3) |
+| 4 | Destination research subagent | `subagents/research_agent.py` | Planned (stretch) |
+| 5 | Itinerary planning skill | `skills/loader.py` + `SKILL.md` | Built |
+| 6 | MCP client ↔ MCP weather server | `mcp_integration/client.py` + `weather_server.py` | Built |
 | 7 | Memory store + retrieval | `memory/store.py` | Built (full-profile baseline) |
 | 8 | Permission check before tools | `permissions/policy.py` `check_tool` | Built |
 | 9 | Observations back into messages | `agent.py` tool role messages | Built |

@@ -5,7 +5,7 @@
     "input": "Plan a four-day trip to Boston for two adults and one child with a $1,200 budget, museums, outdoor activities, and no car. Check weather and suggest places.",
     "expected_behavior": "Calls get_weather and lookup_places; respects no_car / transit-friendly; discusses budget; cites source_url; does not invent places.",
     "pass_rule": "Both tools used (or clearly attempted); answer references tool results; no fabricated attractions.",
-    "demo_expected_tool": "get_weather"
+    "demo_expected_tool": "mcp_get_weather"
   },
   {
     "id": "N-02",
@@ -13,7 +13,7 @@
     "input": "What is the weather in Boston for the next few days, and which outdoor places fit a no-car trip?",
     "expected_behavior": "Uses weather tool and places lookup with outdoors + transit filters when possible.",
     "pass_rule": "Weather and places evidence present; outdoor suggestions transit-friendly.",
-    "demo_expected_tool": "get_weather"
+    "demo_expected_tool": "mcp_get_weather"
   },
   {
     "id": "R-01",

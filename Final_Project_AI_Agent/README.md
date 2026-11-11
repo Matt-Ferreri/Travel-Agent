@@ -2,16 +2,18 @@
 
 Team: **Matthew Ferreri**, **Aashra Amatya**
 
-LLM-driven agent that helps plan trips using weather + curated places tools, with permissions and execution traces. Milestone 2 delivers a **real-LLM tool-calling baseline**; subagent, skill runtime, MCP, and selective memory are planned next.
+LLM-driven agent that helps plan trips using weather + curated places tools, with a repeatable itinerary skill, MCP weather, permissions, and execution trees.
 
 ## What already works
 
 - Streamlit UI with synthetic trip preferences
 - Agent loop with step limit, permission gate, and `trace_id` events
-- Tools: `get_weather` (Open-Meteo live or fixture), `lookup_places` (local dataset)
+- Tools: `mcp_get_weather` (MCP), `get_weather` (direct), `lookup_places`
+- Repeatable skill: `itinerary_planning` (auto-selected for plan/trip prompts)
 - Offline demo mode for tests (scripted — not the graded baseline)
 - Optional OpenAI-compatible tool-calling path (`AGENT_MODE=openai`)
-- Milestone 2 eval prompts in `eval/cases_m2.json`
+- Execution tree + JSON traces under `data/traces/`
+- Eval prompts in `eval/cases_m2.json`
 
 ## Quick start (Windows PowerShell)
 
@@ -35,23 +37,35 @@ streamlit run app.py
    - optional: `WEATHER_MODE=live` for live Open-Meteo
 2. Run `streamlit run app.py`
 3. Ask: *Plan a weekend in Boston for 2 adults and 1 child: museums and outdoors, no car. Check weather and suggest places.*
-4. Save/share the JSON written under `data/traces/`
+4. Submit `data/traces/<id>.json` and `data/traces/<id>.tree.txt`
+
+### How to get the execution tree
+
+1. Run the agent (Streamlit **Run agent**, or `python -c "from agent import run_agent; ..."`).
+2. The UI shows **Execution tree** and saves:
+   - `data/traces/<trace_id>.tree.txt` — readable tree (skill → LLM → tool → result → end)
+   - `data/traces/<trace_id>.json` — full events including tool `result` payloads
+3. For grading, use an `AGENT_MODE=openai` run (not demo).
 
 ## Project layout
 
 | Path | Role |
 |------|------|
 | `app.py` | Streamlit UI |
-| `agent.py` | Main loop + tracing |
+| `agent.py` | Main loop + tracing + execution tree |
 | `llm_client.py` | Demo controller or OpenAI-compatible LLM |
-| `tools/registry.py` | Weather + places tools |
+| `tools/registry.py` | Weather + places + MCP weather tool |
+| `skills/loader.py` | Discover / select / load skills |
+| `skills/itinerary_planning/SKILL.md` | Repeatable itinerary procedure |
+| `mcp_integration/client.py` | MCP stdio client |
+| `mcp_integration/weather_server.py` | MCP weather server |
 | `permissions/policy.py` | Allow / approval / deny |
 | `memory/store.py` | Preference persistence |
 | `data/processed/places.json` | Curated attractions |
 | `data/raw/` | Weather fixture snapshot |
-| `eval/` | M2 cases + runner |
+| `eval/` | Cases + runner |
 | `docs/MILESTONE2.md` | Diagram labels + component plan |
-| `subagents/`, `skills/`, `mcp_integration/` | M3 scaffolds |
+| `subagents/` | Optional stretch scaffold |
 
 ## Safety
 

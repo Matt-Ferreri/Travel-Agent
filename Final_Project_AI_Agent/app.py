@@ -16,8 +16,8 @@ TRACE_DIR = Path("data/traces")
 st.set_page_config(page_title="Travel Planning Agent", page_icon="🧳")
 st.title("Travel Planning Agent")
 st.caption(
-    "Milestone 2 baseline: real OpenAI tool-calling when AGENT_MODE=openai. "
-    "Demo mode is scripted (offline tests only)."
+    "Travel agent with tools, itinerary skill, and MCP weather. "
+    "Set AGENT_MODE=openai for a real LLM run; demo mode is scripted (offline tests)."
 )
 
 with st.sidebar:
@@ -72,30 +72,30 @@ if st.button("Run agent"):
             f"Stopped: {result['stopped_reason']} | trace_id: {result.get('trace_id')} | "
             f"{result.get('duration_ms')} ms"
         )
-        with st.expander("Agent execution trace", expanded=True):
+        with st.expander("Execution tree", expanded=True):
+            st.code(result.get("execution_tree") or "(no tree)", language="text")
+        with st.expander("Agent execution trace (JSON)", expanded=False):
             st.json(result["trace"])
         TRACE_DIR.mkdir(parents=True, exist_ok=True)
         out = TRACE_DIR / f"{result.get('trace_id', 'run')}.json"
-        out.write_text(
-            json.dumps(
-                {
-                    "prompt": prompt,
-                    "answer": result["answer"],
-                    "stopped_reason": result["stopped_reason"],
-                    "trace_id": result.get("trace_id"),
-                    "duration_ms": result.get("duration_ms"),
-                    "trace": result["trace"],
-                },
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-        st.caption(f"Trace saved to {out}")
+        tree_out = TRACE_DIR / f"{result.get('trace_id', 'run')}.tree.txt"
+        payload = {
+            "prompt": prompt,
+            "answer": result["answer"],
+            "stopped_reason": result["stopped_reason"],
+            "trace_id": result.get("trace_id"),
+            "duration_ms": result.get("duration_ms"),
+            "execution_tree": result.get("execution_tree"),
+            "trace": result["trace"],
+        }
+        out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        tree_out.write_text(result.get("execution_tree") or "", encoding="utf-8")
+        st.caption(f"Trace saved to {out} | tree: {tree_out}")
     except Exception as exc:
         st.error(str(exc))
 
 st.divider()
 st.caption(
-    "Next (Milestone 3): subagent, itinerary skill, MCP, selective memory, approval UI. "
-    "See docs/MILESTONE2.md for diagram labels and component plan."
+    "Includes itinerary skill + MCP weather (`mcp_get_weather`). "
+    "See docs/MILESTONE2.md for architecture labels."
 )
