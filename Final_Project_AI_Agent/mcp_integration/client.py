@@ -1,7 +1,8 @@
-"""MCP integration scaffold; optional package installation is not required for demo."""
+"""MCP integration scaffold for Milestone 3."""
+
 
 def list_mcp_tools():
-    # TODO (students): Use an MCP SDK/client to connect to an allowed MCP server.
-    # List the tools it actually exposes, then make one available to the agent.
-    # Do not treat a normal Python tool or this placeholder as an MCP integration.
-    raise NotImplementedError("Student TODO: connect a real MCP server")
+    # TODO (Milestone 3): Connect to a real MCP server (e.g. weather or places),
+    # list exposed tools, and register at least one into the main agent registry.
+    # A plain Python tool is not an MCP integration.
+    raise NotImplementedError("Milestone 3 TODO: connect a real MCP server")

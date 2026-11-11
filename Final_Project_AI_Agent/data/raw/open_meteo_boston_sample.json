@@ -1,0 +1,16 @@
+{
+  "source_url": "https://api.open-meteo.com/v1/forecast?latitude=42.3601&longitude=-71.0589&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=America%2FNew_York&forecast_days=3",
+  "retrieved_at": "2026-11-09",
+  "is_fixture": true,
+  "latitude": 42.3601,
+  "longitude": -71.0589,
+  "timezone": "America/New_York",
+  "daily": {
+    "time": ["2026-11-09", "2026-11-10", "2026-11-11"],
+    "weather_code": [61, 3, 0],
+    "temperature_2m_max": [12.5, 10.0, 8.5],
+    "temperature_2m_min": [6.0, 4.5, 2.0],
+    "precipitation_probability_max": [80, 40, 10]
+  },
+  "notes": "Offline fixture for demo/tests. Live calls use Open-Meteo when WEATHER_MODE=live."
+}

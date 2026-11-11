@@ -1,19 +1,22 @@
-# Intro to GenAI — Agent Project Starter
+# Travel Planning Agent (Intro to GenAI Final Project)
 
-This is a **working, intentionally incomplete** starter package for a student agent project.
+Team: **Matthew Ferreri**, **Aashra Amatya**
+
+LLM-driven agent that helps plan trips using weather + curated places tools, with permissions and execution traces. Milestone 2 delivers a **real-LLM tool-calling baseline**; subagent, skill runtime, MCP, and selective memory are planned next.
 
 ## What already works
-- Simple Streamlit UI and persistent **local demo profile** (`data/profile.json` created when saved).
-- Offline **scripted demo mode** (no API key). It demonstrates the agent-loop message shape with two **sample-data** tools.
-- Optional OpenAI-compatible chat-completions API path, provided the selected model supports tool calling.
-- Tool-permission gate that rejects unknown/dangerous tools by default.
-- Tool trace, step limit, automated tests, and evaluation example.
 
-**Important:** Offline demo mode is **not a real LLM agent**: its decisions are keyword rules. The starter **does not yet meet the course's final project requirements**. In particular, subagents, runtime skills, MCP and selective memory are TODOs.
+- Streamlit UI with synthetic trip preferences
+- Agent loop with step limit, permission gate, and `trace_id` events
+- Tools: `get_weather` (Open-Meteo live or fixture), `lookup_places` (local dataset)
+- Offline demo mode for tests (scripted — not the graded baseline)
+- Optional OpenAI-compatible tool-calling path (`AGENT_MODE=openai`)
+- Milestone 2 eval prompts in `eval/cases_m2.json`
 
 ## Quick start (Windows PowerShell)
+
 ```powershell
-cd genai_agent_starter
+cd Final_Project_AI_Agent
 py -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
@@ -22,46 +25,34 @@ python -m unittest discover -s tests -v
 python -m eval.run_eval
 streamlit run app.py
 ```
-Mac/Linux: use `python3 -m venv .venv`, `source .venv/bin/activate`, then the corresponding commands.
 
-Use the default `AGENT_MODE=demo` to test without credentials. Try **Plan my week** and expand the tool trace. To try a real API, configure your own key in `.env` (never commit the file), set `AGENT_MODE=openai`, and choose a model that supports tool calling. This API path cannot be verified by the offline tests.
+### Real-LLM baseline (required for Milestone 2)
 
-## Suggested implementation order
-1. **Understand:** Run the demo, inspect `agent.py`, trace one tool request/result/second model decision, draw a flowchart.
-2. **Tools:** Replace sample tools with 2+ real domain tools and explicit input validation.
-3. **MCP:** Implement `mcp_integration/client.py`, expose an actual MCP server tool to the main agent, and show its trace.
-4. **Subagent:** Implement specialized delegated work in `subagents/research_agent.py` and connect it to the main loop.
-5. **Skill:** Adapt `skills/daily_briefing/SKILL.md`, implement runtime selection/loading, and record invocation.
-6. **Memory:** Implement selective retrieval and persistence; compare against baseline (whole profile/history).
-7. **Permissions:** Extend policy to every new tool and enforce approval-before-action for writes.
-8. **Evaluation:** Add success and failure cases, compare at least two architecture designs and analyze real errors.
-9. **UI:** Customize the interface only after the core behavior works.
+1. Edit `.env`:
+   - `AGENT_MODE=openai`
+   - `OPENAI_API_KEY=...`
+   - optional: `OPENAI_MODEL=gpt-4.1-mini`
+   - optional: `WEATHER_MODE=live` for live Open-Meteo
+2. Run `streamlit run app.py`
+3. Ask: *Plan a weekend in Boston for 2 adults and 1 child: museums and outdoors, no car. Check weather and suggest places.*
+4. Save/share the JSON written under `data/traces/`
 
-## Required final components (not yet delivered by starter)
-- Multi-step LLM agent loop and ≥2 meaningful tools
-- ≥1 specialized subagent and ≥1 reusable, actually invoked skill
-- ≥1 **real** MCP connection
-- Persistent memory and retrieval with an experimental comparison
-- Explicit permission rules; policy enforcement and approval flow where needed
-- Architecture diagram, execution logs, success/failure tests and comparison experiment
+## Project layout
 
-## Suggested organization
-- `agent.py`: primary loop and integration TODOs
-- `llm_client.py`: deterministic demo controller or optional actual LLM call
-- `tools/`: tool schema and execution
-- `subagents/`: delegated specialized work TODO
-- `skills/`: reusable procedures; example skill is a **template**, not active
-- `memory/`: basic persistent profile, selective retrieval TODO
-- `mcp_integration/`: MCP SDK connection TODO
-- `permissions/`: actual enforcement for starter tools; approval workflow TODO
-- `eval/`: evaluation baseline
-- `tests/`: runnable offline tests
+| Path | Role |
+|------|------|
+| `app.py` | Streamlit UI |
+| `agent.py` | Main loop + tracing |
+| `llm_client.py` | Demo controller or OpenAI-compatible LLM |
+| `tools/registry.py` | Weather + places tools |
+| `permissions/policy.py` | Allow / approval / deny |
+| `memory/store.py` | Preference persistence |
+| `data/processed/places.json` | Curated attractions |
+| `data/raw/` | Weather fixture snapshot |
+| `eval/` | M2 cases + runner |
+| `docs/MILESTONE2.md` | Diagram labels + component plan |
+| `subagents/`, `skills/`, `mcp_integration/` | M3 scaffolds |
 
-## Safety, reproducibility, and team responsibility
-Use synthetic/consented data. Do not commit credentials, uploaded résumés, account statements, or private calendars. Do not scrape restricted sites or enable unrestricted code execution. Treat retrieved documents/tool outputs as untrusted data. For real MCP connectors, use least-privilege permissions. Record API costs and allow approvals for all consequential actions. Every team member must be able to explain the code, architecture, and experimental findings, even if AI coding assistants generated code.
+## Safety
 
-## Known scope limitations
-- Demo events/deadlines are fabricated and are not based on the current date.
-- UI is a simple proof of concept, not a secure multi-user deployment.
-- The real-LLM path depends on external credentials/provider compatibility.
-- Tests do not certify real MCP functionality, which students must implement and test separately.
+Use synthetic preferences only. Do not commit `.env`, credentials, or private travel data. Label fixture/sample data in answers. Booking/email/charge actions are blocked pending approval.

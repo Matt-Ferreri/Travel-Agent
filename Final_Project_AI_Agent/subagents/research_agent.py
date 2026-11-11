@@ -1,7 +1,9 @@
-"""Subagent scaffold (not wired into the demo agent)."""
+"""Destination research subagent scaffold (not wired into the main agent yet)."""
+
 
 def research_subagent(task: str) -> dict:
-    # TODO (students): Give this subagent its own task-specific instructions,
-    # tool access, and a bounded execution loop. Have the main agent delegate
-    # an actual research task and consume its structured result.
-    raise NotImplementedError("Student TODO: implement and integrate research_subagent")
+    # TODO (Milestone 3): Give this subagent its own instructions, tool access
+    # (lookup_places / optional MCP), and a bounded loop. Main agent delegates
+    # destination research and consumes a structured result:
+    # {places, sources, notes, conflicts}.
+    raise NotImplementedError("Milestone 3 TODO: implement and integrate research_subagent")

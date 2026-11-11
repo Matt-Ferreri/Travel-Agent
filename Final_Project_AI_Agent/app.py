@@ -1,36 +1,101 @@
-"""Minimal Streamlit interface. Run: streamlit run app.py"""
+"""Travel Planning Agent UI. Run: streamlit run app.py"""
+import json
 import os
 from pathlib import Path
+
 import streamlit as st
 from dotenv import load_dotenv
+
 from agent import run_agent
 from memory.store import load_profile, save_profile
 
 load_dotenv()
-PROFILE_FILE=Path("data/profile.json")
-st.set_page_config(page_title="GenAI Agent Starter", page_icon="🤖")
-st.title("GenAI Agent Starter")
-st.caption("Demo mode uses scripted tool selection and sample data — it is not an LLM agent.")
-with st.sidebar:
-    st.header("User profile / memory")
-    profile=load_profile(PROFILE_FILE)
-    major=st.text_input("Major", value=profile.get("major", ""))
-    interests=st.text_input("Interests (comma-separated)", value=", ".join(profile.get("interests", [])))
-    if st.button("Save profile"):
-        save_profile(PROFILE_FILE,{"major":major,"interests":[x.strip() for x in interests.split(",") if x.strip()]})
-        st.success("Saved to local data/profile.json")
-    st.write("Mode:",os.getenv("AGENT_MODE","demo"))
+PROFILE_FILE = Path("data/profile.json")
+TRACE_DIR = Path("data/traces")
 
-prompt=st.text_input("Ask the agent", value="Plan my week: check assignments and calendar events")
+st.set_page_config(page_title="Travel Planning Agent", page_icon="🧳")
+st.title("Travel Planning Agent")
+st.caption(
+    "Milestone 2 baseline: real OpenAI tool-calling when AGENT_MODE=openai. "
+    "Demo mode is scripted (offline tests only)."
+)
+
+with st.sidebar:
+    st.header("Trip preferences / memory")
+    profile = load_profile(PROFILE_FILE)
+    travelers = profile.get("travelers") or {}
+    name = st.text_input("Traveler name", value=profile.get("traveler_name", ""))
+    home_city = st.text_input("Home / focus city", value=profile.get("home_city", "Boston"))
+    adults = st.number_input("Adults", min_value=1, max_value=10, value=int(travelers.get("adults", 2)))
+    children = st.number_input("Children", min_value=0, max_value=10, value=int(travelers.get("children", 1)))
+    budget = st.number_input("Budget (USD)", min_value=0, value=int(profile.get("budget_usd", 1200)))
+    interests = st.text_input(
+        "Interests (comma-separated)",
+        value=", ".join(profile.get("interests", [])),
+    )
+    transportation = st.selectbox(
+        "Transportation",
+        options=["no_car", "has_car", "transit_ok"],
+        index=["no_car", "has_car", "transit_ok"].index(profile.get("transportation", "no_car"))
+        if profile.get("transportation", "no_car") in {"no_car", "has_car", "transit_ok"}
+        else 0,
+    )
+    notes = st.text_area("Notes", value=profile.get("notes", ""))
+    if st.button("Save preferences"):
+        save_profile(
+            PROFILE_FILE,
+            {
+                "traveler_name": name,
+                "home_city": home_city,
+                "travelers": {"adults": int(adults), "children": int(children)},
+                "budget_usd": int(budget),
+                "interests": [x.strip() for x in interests.split(",") if x.strip()],
+                "transportation": transportation,
+                "dietary": profile.get("dietary", []),
+                "notes": notes,
+                "is_synthetic": True,
+            },
+        )
+        st.success("Saved to local data/profile.json")
+    st.write("Mode:", os.getenv("AGENT_MODE", "demo"))
+    st.write("Weather:", os.getenv("WEATHER_MODE", "fixture"))
+
+prompt = st.text_input(
+    "Ask the agent",
+    value="Plan a weekend in Boston for 2 adults and 1 child: museums and outdoors, no car. Check weather and suggest places.",
+)
 if st.button("Run agent"):
     try:
-        result=run_agent(prompt,load_profile(PROFILE_FILE))
+        result = run_agent(prompt, load_profile(PROFILE_FILE))
         st.markdown(result["answer"])
-        st.info("Stopped: " + result["stopped_reason"])
-        with st.expander("Agent tool trace", expanded=True):
+        st.info(
+            f"Stopped: {result['stopped_reason']} | trace_id: {result.get('trace_id')} | "
+            f"{result.get('duration_ms')} ms"
+        )
+        with st.expander("Agent execution trace", expanded=True):
             st.json(result["trace"])
+        TRACE_DIR.mkdir(parents=True, exist_ok=True)
+        out = TRACE_DIR / f"{result.get('trace_id', 'run')}.json"
+        out.write_text(
+            json.dumps(
+                {
+                    "prompt": prompt,
+                    "answer": result["answer"],
+                    "stopped_reason": result["stopped_reason"],
+                    "trace_id": result.get("trace_id"),
+                    "duration_ms": result.get("duration_ms"),
+                    "trace": result["trace"],
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        st.caption(f"Trace saved to {out}")
     except Exception as exc:
         st.error(str(exc))
 
 st.divider()
-st.caption("Student TODO: add a real subagent, skill invocation, MCP, selective memory, permission approval, and evaluation. UI polish is optional.")
+st.caption(
+    "Next (Milestone 3): subagent, itinerary skill, MCP, selective memory, approval UI. "
+    "See docs/MILESTONE2.md for diagram labels and component plan."
+)

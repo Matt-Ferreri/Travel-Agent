@@ -1,0 +1,11 @@
+{
+  "traveler_name": "Alex Rivera",
+  "home_city": "Boston",
+  "travelers": {"adults": 2, "children": 1},
+  "budget_usd": 1200,
+  "interests": ["museums", "outdoors", "kids"],
+  "transportation": "no_car",
+  "dietary": [],
+  "notes": "Synthetic family profile for Milestone 2 baseline.",
+  "is_synthetic": true
+}
