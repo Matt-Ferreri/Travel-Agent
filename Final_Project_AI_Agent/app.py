@@ -16,8 +16,8 @@ TRACE_DIR = Path("data/traces")
 st.set_page_config(page_title="Travel Planning Agent", page_icon="🧳")
 st.title("Travel Planning Agent")
 st.caption(
-    "Travel agent with tools, itinerary skill, and MCP weather. "
-    "Set AGENT_MODE=openai for a real LLM run; demo mode is scripted (offline tests)."
+    "Travel agent with tools, itinerary skill, MCP weather, and OpenTripMap places. "
+    "Set AGENT_MODE=openai for a real LLM run; set PLACES_MODE=live + OPENTRIPMAP_API_KEY for any city."
 )
 
 with st.sidebar:

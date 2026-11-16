@@ -6,7 +6,7 @@ When the user asks to plan or revise a multi-day trip with preferences, budget, 
 ## Procedure
 1. Load saved trip preferences from memory (already injected into context).
 2. Call `mcp_get_weather` for the destination (MCP-backed weather tool).
-3. Call `lookup_places` with interests and `transit_friendly_only=true` when transportation is `no_car`.
+3. Call `lookup_places` with interests and `transit_friendly_only=true` when transportation is `no_car`. Live mode uses OpenTripMap (`PLACES_MODE=live`); fixture mode only has curated Boston sample data.
 4. Draft a day-by-day outline from tool results only.
 5. Check rough cost totals against `budget_usd` (do not invent prices).
 6. Cite `source_url` for each recommended place. Label fixtures/synthetic records.

@@ -6,6 +6,7 @@ from pathlib import Path
 
 os.environ.setdefault("AGENT_MODE", "demo")
 os.environ.setdefault("WEATHER_MODE", "fixture")
+os.environ["PLACES_MODE"] = "fixture"
 
 from agent import run_agent, format_execution_tree
 from permissions.policy import check_tool
@@ -87,8 +88,16 @@ class TravelBaselineTests(unittest.TestCase):
     def test_lookup_places_filters_synthetic_and_transit(self):
         result = lookup_places("Boston", interests=["outdoors"], transit_friendly_only=True)
         self.assertGreater(result["count"], 0)
+        self.assertTrue(result.get("is_fixture"))
+        self.assertEqual(result.get("mode"), "fixture")
         self.assertTrue(all(p.get("transit_friendly") for p in result["places"]))
         self.assertTrue(all(not p.get("is_synthetic") for p in result["places"]))
+
+    def test_lookup_places_unknown_city_fixture_is_empty(self):
+        result = lookup_places("Chicago", interests=["museums"])
+        self.assertEqual(result["count"], 0)
+        self.assertEqual(result.get("mode"), "fixture")
+        self.assertIn("PLACES_MODE=live", result.get("note", ""))
 
     def test_weather_fixture(self):
         weather = get_weather("Boston", forecast_days=3)

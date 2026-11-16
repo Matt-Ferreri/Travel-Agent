@@ -135,7 +135,12 @@ class OpenAICompatibleModel:
         request = urllib.request.Request(
             base + "/chat/completions",
             data=json.dumps(payload).encode(),
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+                # Cloudflare (error 1010) blocks Python's default urllib User-Agent.
+                "User-Agent": "TravelAgent/1.0 (+https://github.com/; urllib)",
+            },
             method="POST",
         )
         try:
