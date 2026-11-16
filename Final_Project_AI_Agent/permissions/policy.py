@@ -1,7 +1,13 @@
 """Central authorization gate. Never rely on prompt instructions alone."""
 from dataclasses import dataclass
 
-ALLOWED_READ_TOOLS = {"get_weather", "mcp_get_weather", "lookup_places"}
+ALLOWED_READ_TOOLS = {
+    "weather_subagent",
+    "attractions_subagent",
+    "get_weather",
+    "mcp_get_weather",
+    "lookup_places",
+}
 APPROVAL_REQUIRED = {
     "save_itinerary",
     "send_itinerary_email",

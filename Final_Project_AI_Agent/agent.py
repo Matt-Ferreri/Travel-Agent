@@ -120,7 +120,15 @@ def run_agent(prompt: str, profile: dict | None = None, model: Any = None, max_s
                 "event": "tool_call",
                 "trace_id": trace_id,
                 "timestamp": _utc_now(),
-                "component": "mcp_integration.client" if name.startswith("mcp_") else "tools.registry",
+                "component": (
+                    "subagents.weather_agent"
+                    if name == "weather_subagent"
+                    else "subagents.attractions_agent"
+                    if name == "attractions_subagent"
+                    else "mcp_integration.client"
+                    if name.startswith("mcp_")
+                    else "tools.registry"
+                ),
                 "step": step + 1,
                 "tool": name,
                 "permission": decision.status,
@@ -155,12 +163,13 @@ def run_agent(prompt: str, profile: dict | None = None, model: Any = None, max_s
                     "reason": decision.reason,
                 }
             )
+            # Trace keeps the full result; LLM only sees a compact observation (avoids HTTP 413).
             messages.append(
                 {
                     "role": "tool",
                     "tool_call_id": call["id"],
                     "name": name,
-                    "content": json.dumps(result),
+                    "content": json.dumps(_compact_tool_observation(result)),
                 }
             )
 
@@ -235,15 +244,97 @@ def _finalize(
     }
 
 
+def _compact_tool_observation(result: dict[str, Any], max_places: int = 8) -> dict[str, Any]:
+    """Shrink tool payloads before sending them back to the LLM (Groq 413 protection)."""
+    if not isinstance(result, dict):
+        return {"value": str(result)[:500]}
+
+    if result.get("subagent") == "weather":
+        return {
+            "subagent": "weather",
+            "status": result.get("status"),
+            "city": result.get("city"),
+            "mode": result.get("mode"),
+            "is_fixture": result.get("is_fixture"),
+            "source_url": result.get("source_url"),
+            "daily": result.get("daily"),
+            "notes": result.get("notes"),
+            "error": result.get("error"),
+            "tool_used": result.get("tool_used"),
+        }
+
+    if result.get("subagent") == "attractions" or "places" in result:
+        places_out = []
+        for place in list(result.get("places") or [])[:max_places]:
+            if not isinstance(place, dict):
+                continue
+            places_out.append(
+                {
+                    "name": place.get("name"),
+                    "city": place.get("city"),
+                    "category": place.get("category"),
+                    "estimated_cost_usd": place.get("estimated_cost_usd"),
+                    "hours": place.get("hours"),
+                    "transit_friendly": place.get("transit_friendly"),
+                    "kid_friendly": place.get("kid_friendly"),
+                    "interests": place.get("interests"),
+                    "source_url": place.get("source_url"),
+                    "is_synthetic": place.get("is_synthetic"),
+                }
+            )
+        return {
+            "subagent": result.get("subagent", "attractions"),
+            "status": result.get("status", "ok"),
+            "city": result.get("city"),
+            "count": result.get("count", len(places_out)),
+            "mode": result.get("mode"),
+            "is_fixture": result.get("is_fixture"),
+            "places": places_out,
+            "sources": (result.get("sources") or [])[:max_places],
+            "conflicts": result.get("conflicts") or [],
+            "notes": (result.get("notes") or "")[:400],
+            "error": result.get("error"),
+            "tool_used": result.get("tool_used"),
+        }
+
+    if "daily" in result:
+        return {
+            "city": result.get("city"),
+            "mode": result.get("mode"),
+            "is_fixture": result.get("is_fixture"),
+            "source_url": result.get("source_url"),
+            "daily": result.get("daily"),
+            "error": result.get("error"),
+        }
+
+    # Generic fallback: drop bulky keys and truncate.
+    slim = {k: v for k, v in result.items() if k not in {"weather", "steps", "raw", "html"}}
+    encoded = json.dumps(slim, ensure_ascii=True)
+    if len(encoded) > 6000:
+        return {"status": result.get("status"), "error": "result_truncated", "preview": encoded[:4000]}
+    return slim
+
+
 def _summarize_result(result: dict[str, Any]) -> dict[str, Any]:
-    if "error" in result:
+    if result.get("status") in {"error", "denied", "approval_required"} and result.get("error"):
+        return {"error": result.get("error"), "subagent": result.get("subagent")}
+    if "error" in result and result.get("subagent") is None and "places" not in result and "daily" not in result:
         return {"error": result.get("error"), "reason": result.get("reason")}
     summary: dict[str, Any] = {}
+    if result.get("subagent"):
+        summary["subagent"] = result.get("subagent")
+        summary["status"] = result.get("status")
+        if result.get("steps"):
+            summary["inner_tools"] = [s.get("tool") for s in result["steps"]]
     if "places" in result:
         summary["place_count"] = result.get("count")
-    if "daily" in result:
-        summary["weather_mode"] = result.get("mode")
-        summary["days"] = (result.get("daily") or {}).get("time")
-    if result.get("mcp"):
-        summary["mcp"] = result.get("mcp")
+    weather_block = result.get("weather") if isinstance(result.get("weather"), dict) else result
+    if isinstance(weather_block, dict) and (weather_block.get("daily") or result.get("daily")):
+        summary["weather_mode"] = weather_block.get("mode") or result.get("mode")
+        daily = weather_block.get("daily") or result.get("daily") or {}
+        summary["days"] = daily.get("time")
+    if result.get("mcp") or (isinstance(result.get("weather"), dict) and result["weather"].get("mcp")):
+        summary["mcp"] = result.get("mcp") or result["weather"].get("mcp")
+    if result.get("conflicts"):
+        summary["conflicts"] = result.get("conflicts")
     return summary

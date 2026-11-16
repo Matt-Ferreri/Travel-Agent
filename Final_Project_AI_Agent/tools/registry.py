@@ -73,15 +73,45 @@ _WEATHER_PARAMS = {
     "additionalProperties": False,
 }
 
+_PLACES_PARAMS = {
+    "type": "object",
+    "properties": {
+        "city": {
+            "type": "string",
+            "description": "City to search, e.g. Chicago or Boston",
+        },
+        "category": {
+            "type": "string",
+            "description": "Optional category: museum, park, attraction, hike, walking_tour",
+        },
+        "interests": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Optional interest keywords, e.g. museums, outdoors, kids",
+        },
+        "transit_friendly_only": {
+            "type": "boolean",
+            "description": "If true, only return places reachable without a car",
+        },
+        "include_synthetic": {
+            "type": "boolean",
+            "description": "If true, include synthetic/fictional trap records (fixture mode only)",
+        },
+    },
+    "required": ["city"],
+    "additionalProperties": False,
+}
+
+# Exposed to the main LLM only (keeps Groq/OpenAI request payloads smaller).
+# Low-level tools remain callable via execute_tool from subagents/tests.
 TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
-            "name": "mcp_get_weather",
+            "name": "weather_subagent",
             "description": (
-                "Preferred weather tool. Calls get_weather through a real MCP stdio server "
-                "(mcp_integration.weather_server), then returns the forecast. "
-                "Uses Open-Meteo live or a saved fixture when WEATHER_MODE=fixture."
+                "Transportation/weather subagent. Returns a compact Open-Meteo forecast "
+                "(via MCP). Use for destination weather."
             ),
             "parameters": _WEATHER_PARAMS,
         },
@@ -89,50 +119,12 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
-            "name": "get_weather",
+            "name": "attractions_subagent",
             "description": (
-                "Direct in-process weather lookup (no MCP). Prefer mcp_get_weather when available."
+                "Destination/attractions subagent. Returns tourism sites "
+                "(OpenTripMap live or local fixture), sources, notes, and conflicts."
             ),
-            "parameters": _WEATHER_PARAMS,
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "lookup_places",
-            "description": (
-                "Look up attractions for a city. Uses OpenTripMap when PLACES_MODE=live "
-                "(requires OPENTRIPMAP_API_KEY); otherwise uses the local places fixture. "
-                "Filter by category, interests, or transit-friendly (no car)."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "city": {
-                        "type": "string",
-                        "description": "City to search, e.g. Chicago or Boston",
-                    },
-                    "category": {
-                        "type": "string",
-                        "description": "Optional category: museum, park, attraction, hike, walking_tour",
-                    },
-                    "interests": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Optional interest keywords, e.g. museums, outdoors, kids",
-                    },
-                    "transit_friendly_only": {
-                        "type": "boolean",
-                        "description": "If true, only return places reachable without a car",
-                    },
-                    "include_synthetic": {
-                        "type": "boolean",
-                        "description": "If true, include synthetic/fictional trap records (fixture mode only)",
-                    },
-                },
-                "required": ["city"],
-                "additionalProperties": False,
-            },
+            "parameters": _PLACES_PARAMS,
         },
     },
 ]
@@ -570,7 +562,33 @@ def lookup_places(
     )
 
 
+def _normalize_interests(raw: Any) -> list[str]:
+    interests = raw or []
+    if isinstance(interests, str):
+        interests = [x.strip() for x in interests.split(",") if x.strip()]
+    if not isinstance(interests, list):
+        raise ValueError("interests must be a list of strings")
+    return interests
+
+
 def execute_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
+    if name == "weather_subagent":
+        from subagents.weather_agent import run_weather_subagent
+
+        return run_weather_subagent(
+            city=str(args.get("city", "")),
+            forecast_days=int(args.get("forecast_days") or 3),
+        )
+    if name == "attractions_subagent":
+        from subagents.attractions_agent import run_attractions_subagent
+
+        return run_attractions_subagent(
+            city=str(args.get("city", "")),
+            category=args.get("category"),
+            interests=_normalize_interests(args.get("interests")),
+            transit_friendly_only=bool(args.get("transit_friendly_only", False)),
+            include_synthetic=bool(args.get("include_synthetic", False)),
+        )
     if name == "mcp_get_weather":
         from mcp_integration.client import call_mcp_weather
 
@@ -584,15 +602,10 @@ def execute_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
             forecast_days=int(args.get("forecast_days") or 3),
         )
     if name == "lookup_places":
-        interests = args.get("interests") or []
-        if isinstance(interests, str):
-            interests = [x.strip() for x in interests.split(",") if x.strip()]
-        if not isinstance(interests, list):
-            raise ValueError("interests must be a list of strings")
         return lookup_places(
             city=str(args.get("city", "")),
             category=args.get("category"),
-            interests=interests,
+            interests=_normalize_interests(args.get("interests")),
             transit_friendly_only=bool(args.get("transit_friendly_only", False)),
             include_synthetic=bool(args.get("include_synthetic", False)),
         )

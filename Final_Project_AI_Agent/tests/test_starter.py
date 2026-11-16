@@ -22,15 +22,17 @@ class TravelBaselineTests(unittest.TestCase):
         self.assertEqual(result["stopped_reason"], "completed")
         self.assertTrue(result.get("trace_id"))
         tools = [e["tool"] for e in result["trace"] if e.get("event") == "tool_call"]
-        self.assertEqual(tools, ["mcp_get_weather", "lookup_places"])
+        self.assertEqual(tools, ["weather_subagent", "attractions_subagent"])
         self.assertIn("demo-mode", result["answer"].lower())
         skill_events = [e for e in result["trace"] if e.get("event") == "skill_invoke"]
         self.assertEqual(len(skill_events), 1)
         self.assertEqual(skill_events[0]["skill"], "itinerary_planning")
-        self.assertIn("mcp_get_weather", result["execution_tree"])
-        weather = next(e for e in result["trace"] if e.get("tool") == "mcp_get_weather")
+        self.assertIn("weather_subagent", result["execution_tree"])
+        weather = next(e for e in result["trace"] if e.get("tool") == "weather_subagent")
         self.assertEqual(weather["status"], "ok")
-        self.assertIn("mcp", weather.get("result") or {})
+        weather_result = weather.get("result") or {}
+        self.assertEqual(weather_result.get("subagent"), "weather")
+        self.assertIn("mcp", (weather_result.get("weather") or {}))
 
     def test_non_tool_question(self):
         tools = [e for e in run_agent("Hello")["trace"] if e.get("event") == "tool_call"]
@@ -51,6 +53,8 @@ class TravelBaselineTests(unittest.TestCase):
         self.assertEqual(check_tool("get_weather").status, "allowed")
         self.assertEqual(check_tool("mcp_get_weather").status, "allowed")
         self.assertEqual(check_tool("lookup_places").status, "allowed")
+        self.assertEqual(check_tool("weather_subagent").status, "allowed")
+        self.assertEqual(check_tool("attractions_subagent").status, "allowed")
 
     def test_skill_loader(self):
         self.assertIn("itinerary_planning", list_skills())
@@ -109,6 +113,22 @@ class TravelBaselineTests(unittest.TestCase):
         self.assertAlmostEqual(lat, 42.3601, places=3)
         self.assertAlmostEqual(lon, -71.0589, places=3)
         self.assertEqual(meta.get("source"), "local_cache")
+
+    def test_weather_and_attractions_subagents(self):
+        weather = execute_tool("weather_subagent", {"city": "Boston", "forecast_days": 3})
+        self.assertEqual(weather.get("subagent"), "weather")
+        self.assertEqual(weather.get("status"), "ok")
+        self.assertTrue((weather.get("weather") or {}).get("is_fixture"))
+        self.assertEqual(weather["steps"][0]["tool"], "mcp_get_weather")
+
+        places = execute_tool(
+            "attractions_subagent",
+            {"city": "Boston", "interests": ["outdoors"], "transit_friendly_only": True},
+        )
+        self.assertEqual(places.get("subagent"), "attractions")
+        self.assertEqual(places.get("status"), "ok")
+        self.assertGreater(places.get("count", 0), 0)
+        self.assertEqual(places["steps"][0]["tool"], "lookup_places")
 
     def test_block_unauthorized_model_tool_call(self):
         class RogueModel:

@@ -5,13 +5,13 @@ When the user asks to plan or revise a multi-day trip with preferences, budget, 
 
 ## Procedure
 1. Load saved trip preferences from memory (already injected into context).
-2. Call `mcp_get_weather` for the destination (MCP-backed weather tool). Live weather geocodes any city via Open-Meteo.
-3. Call `lookup_places` with interests and `transit_friendly_only=true` when transportation is `no_car`. Live mode uses OpenTripMap (`PLACES_MODE=live`); fixture mode only has curated Boston sample data.
-4. Draft a day-by-day outline from tool results only. Do not invent food/hotel bookings — lodging/dining are deferred stretch unless tools return them.
+2. Call `weather_subagent` for the destination (delegates to MCP-backed Open-Meteo; live geocodes any city).
+3. Call `attractions_subagent` with interests and `transit_friendly_only=true` when transportation is `no_car` (delegates to OpenTripMap live or the Boston places fixture).
+4. Draft a day-by-day outline from subagent/tool results only — do not invent venues, hours, or prices.
 5. Check rough cost totals against `budget_usd` (do not invent prices).
 6. Cite `source_url` for each recommended place. Label fixtures/synthetic records.
-7. If constraints conflict (e.g., no-car + car-only hike), flag the conflict and offer alternatives.
+7. If constraints conflict (e.g., no-car + car-only hike), flag the conflict using subagent `conflicts` / notes and offer alternatives.
 
 ## Notes
-- Prefer `mcp_get_weather` over direct `get_weather` so weather crosses the MCP boundary.
+- Prefer subagents (`weather_subagent`, `attractions_subagent`) over direct `mcp_get_weather` / `lookup_places`.
 - Stay in travel-planning scope; refuse booking/email/payments without approval tools.

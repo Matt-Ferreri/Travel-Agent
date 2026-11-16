@@ -44,7 +44,7 @@ After a successful openai run, submit both:
 | 2 | Main LLM agent loop + step stop | `agent.py` `run_agent` | Built |
 | 3a | Tool: weather (direct + MCP) | `tools/registry.py` / `mcp_get_weather` | Built |
 | 3b | Tool: places lookup | `tools/registry.py` `lookup_places` | Built |
-| 4 | Destination research subagent | `subagents/research_agent.py` | Planned (stretch) |
+| 4 | Weather + attractions subagents | `subagents/weather_agent.py`, `attractions_agent.py` | Built |
 | 5 | Itinerary planning skill | `skills/loader.py` + `SKILL.md` | Built |
 | 6 | MCP client ↔ MCP weather server | `mcp_integration/client.py` + `weather_server.py` | Built |
 | 7 | Memory store + retrieval | `memory/store.py` | Built (full-profile baseline) |

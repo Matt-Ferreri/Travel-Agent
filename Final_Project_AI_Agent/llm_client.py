@@ -5,14 +5,14 @@ import urllib.request
 from typing import Any
 
 SYSTEM_PROMPT = (
-    "You are a careful travel planning assistant. Use tools for weather and place facts. "
-    "When a reusable skill procedure is included in the user message, follow it. "
-    "Prefer mcp_get_weather (MCP-backed) over get_weather for forecasts. "
-    "Never invent attractions, hours, ticket URLs, or weather. If a place is missing from "
-    "tool results, say so. Prefer transit-friendly options when the profile says no_car. "
-    "Cite source_url fields when recommending places. Label fixture/sample data clearly. "
-    "Refuse booking, payments, and email sends — those require separate approval tools. "
-    "Stay in travel-planning scope; decline unrelated requests."
+    "You are a careful travel planning assistant. "
+    "Follow any reusable skill procedure included in the user message. "
+    "Use weather_subagent for forecasts and attractions_subagent for tourism sites. "
+    "Never invent attractions, hours, ticket URLs, or weather. "
+    "If a place is missing from tool results, say so. "
+    "Prefer transit-friendly options when the profile says no_car. "
+    "Cite source_url fields. Label fixture/sample data clearly. "
+    "Refuse booking, payments, and email sends. Stay in travel-planning scope."
 )
 
 
@@ -56,20 +56,20 @@ class DemoModel:
         ) or wants_plan
 
         city = "Boston"
-        for candidate in ["boston", "cambridge", "new york", "nyc"]:
+        for candidate in ["boston", "cambridge", "chicago", "seattle", "new york", "nyc"]:
             if candidate in user_text:
                 city = "New York" if candidate in {"new york", "nyc"} else candidate.title()
                 break
 
         if wants_weather:
-            targets.append(("mcp_get_weather", {"city": city, "forecast_days": 3}))
+            targets.append(("weather_subagent", {"city": city, "forecast_days": 3}))
         if wants_places:
             args: dict[str, Any] = {
                 "city": city,
                 "interests": ["museums", "outdoors", "kids"],
                 "transit_friendly_only": "no_car" in user_text or "no car" in user_text,
             }
-            targets.append(("lookup_places", args))
+            targets.append(("attractions_subagent", args))
 
         pending = [(n, a) for n, a in targets if n not in called]
         if pending:
@@ -90,27 +90,36 @@ class DemoModel:
             lines = ["This is a **demo-mode** travel briefing (scripted tool choice, not an LLM):"]
             for item in observed:
                 data = json.loads(item["content"])
-                if data.get("daily"):
-                    days = data["daily"].get("time", [])
-                    highs = data["daily"].get("temperature_2m_max", [])
-                    lines.append(f"- Weather ({data.get('city', city)}, {data.get('mode', 'unknown')}):")
+                weather = data.get("weather") if data.get("subagent") == "weather" else data
+                if isinstance(weather, dict) and weather.get("daily"):
+                    days = weather["daily"].get("time", [])
+                    highs = weather["daily"].get("temperature_2m_max", [])
+                    lines.append(
+                        f"- Weather subagent ({data.get('city', city)}, "
+                        f"{weather.get('mode', data.get('mode', 'unknown'))}):"
+                    )
                     for d, h in zip(days, highs):
                         lines.append(f"  - {d}: high {h}°C")
-                if "places" in data:
-                    lines.append(f"- Places matched: {data.get('count', 0)}")
-                    for place in data.get("places", [])[:5]:
+                places = data.get("places")
+                if isinstance(places, list):
+                    lines.append(
+                        f"- Attractions subagent matched: {data.get('count', len(places))}"
+                    )
+                    for place in places[:5]:
                         syn = " [SYNTHETIC]" if place.get("is_synthetic") else ""
                         lines.append(
                             f"  - {place.get('name')}{syn} "
                             f"(~${place.get('estimated_cost_usd')}) "
                             f"{place.get('source_url')}"
                         )
+                if data.get("conflicts"):
+                    lines.append(f"- Conflicts: {'; '.join(data['conflicts'])}")
             lines.append("For Milestone 2 grading, set AGENT_MODE=openai and capture a real LLM trace.")
             return {"content": "\n".join(lines), "tool_calls": []}
 
         return {
             "content": (
-                "Demo mode supports travel weather/places questions. "
+                "Demo mode supports travel weather/places questions via subagents. "
                 "Try: 'Plan a Boston weekend with museums and outdoors, no car.' "
                 "For a real LLM baseline, set AGENT_MODE=openai and OPENAI_API_KEY."
             ),

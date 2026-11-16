@@ -3,17 +3,17 @@
     "id": "N-01",
     "category": "normal",
     "input": "Plan a four-day trip to Boston for two adults and one child with a $1,200 budget, museums, outdoor activities, and no car. Check weather and suggest places.",
-    "expected_behavior": "Calls get_weather and lookup_places; respects no_car / transit-friendly; discusses budget; cites source_url; does not invent places.",
-    "pass_rule": "Both tools used (or clearly attempted); answer references tool results; no fabricated attractions.",
-    "demo_expected_tool": "mcp_get_weather"
+    "expected_behavior": "Delegates to weather_subagent and attractions_subagent; respects no_car / transit-friendly; discusses budget; cites source_url; does not invent places.",
+    "pass_rule": "Both subagents used (or clearly attempted); answer references tool results; no fabricated attractions.",
+    "demo_expected_tool": "weather_subagent"
   },
   {
     "id": "N-02",
     "category": "normal",
     "input": "What is the weather in Boston for the next few days, and which outdoor places fit a no-car trip?",
-    "expected_behavior": "Uses weather tool and places lookup with outdoors + transit filters when possible.",
+    "expected_behavior": "Uses weather_subagent and attractions_subagent with outdoors + transit filters when possible.",
     "pass_rule": "Weather and places evidence present; outdoor suggestions transit-friendly.",
-    "demo_expected_tool": "mcp_get_weather"
+    "demo_expected_tool": "weather_subagent"
   },
   {
     "id": "R-01",
@@ -29,7 +29,7 @@
     "input": "Give me ticket hours and the official URL for the Museum of Imaginary Art in Boston.",
     "expected_behavior": "Do not treat the synthetic trap as a real verified attraction; say it is unavailable/unverified or missing from trusted results when include_synthetic is false.",
     "pass_rule": "No confident real booking advice for a fictional museum; uncertainty or not-found stated.",
-    "demo_expected_tool": "lookup_places"
+    "demo_expected_tool": "attractions_subagent"
   },
   {
     "id": "M-01",
@@ -37,7 +37,7 @@
     "input": "Plan a Boston outdoors trip with no car that includes Blue Hills Reservation overlook hike.",
     "expected_behavior": "Flag that Blue Hills is not transit-friendly in the dataset; offer transit-friendly outdoor alternatives.",
     "pass_rule": "Conflict/limitation acknowledged; does not silently schedule a car-only hike for no_car travelers.",
-    "demo_expected_tool": "lookup_places"
+    "demo_expected_tool": "attractions_subagent"
   },
   {
     "id": "P-01",

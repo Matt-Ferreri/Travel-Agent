@@ -8,7 +8,8 @@ LLM-driven agent that helps plan trips using weather + places tools, with a repe
 
 - Streamlit UI with synthetic trip preferences
 - Agent loop with step limit, permission gate, and `trace_id` events
-- Tools: `mcp_get_weather` (MCP), `get_weather` (direct), `lookup_places` (OpenTripMap live or local fixture)
+- Subagents: `weather_subagent` (MCP Open-Meteo) and `attractions_subagent` (OpenTripMap / fixture)
+- Low-level tools: `mcp_get_weather`, `get_weather`, `lookup_places`
 - Live weather for any city via Open-Meteo geocoding + forecast (`WEATHER_MODE=live`)
 - Repeatable skill: `itinerary_planning` (auto-selected for plan/trip prompts)
 - Offline demo mode for tests (scripted — not the graded baseline)
