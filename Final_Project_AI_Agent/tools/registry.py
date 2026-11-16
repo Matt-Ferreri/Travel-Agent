@@ -151,6 +151,32 @@ def _normalize_city(city: str) -> str:
     return (city or "").strip().lower()
 
 
+def _resolve_city_coords(city: str) -> tuple[float, float, dict[str, Any]]:
+    """Return (lat, lon, meta). Uses local cache, then Open-Meteo geocoding (no key)."""
+    city_key = _normalize_city(city)
+    if city_key in CITY_COORDS:
+        lat, lon = CITY_COORDS[city_key]
+        return lat, lon, {"source": "local_cache", "query": city}
+
+    query = urllib.parse.urlencode({"name": city.strip(), "count": 1, "language": "en", "format": "json"})
+    url = f"https://geocoding-api.open-meteo.com/v1/search?{query}"
+    payload = _http_get_json(url)
+    results = payload.get("results") if isinstance(payload, dict) else None
+    if not results:
+        raise RuntimeError(f"Could not geocode city '{city}'")
+    hit = results[0]
+    lat = float(hit["latitude"])
+    lon = float(hit["longitude"])
+    return lat, lon, {
+        "source": "open_meteo_geocoding",
+        "source_url": url,
+        "resolved_name": hit.get("name"),
+        "country": hit.get("country"),
+        "admin1": hit.get("admin1"),
+        "query": city,
+    }
+
+
 def _http_get_json(url: str, timeout: int = 20) -> Any:
     request = urllib.request.Request(
         url,
@@ -379,14 +405,7 @@ def get_weather(city: str, forecast_days: int = 3) -> dict[str, Any]:
     days = max(1, min(7, days))
 
     mode = os.getenv("WEATHER_MODE", "fixture").lower()
-    coords = CITY_COORDS.get(city_key)
-    if coords is None and mode == "live":
-        return {
-            "error": f"Unknown city '{city}'. Supported demo cities: {sorted(CITY_COORDS)}",
-            "source": "local geocoder",
-        }
-
-    if mode != "live" or coords is None:
+    if mode != "live":
         fixture = json.loads(WEATHER_FIXTURE.read_text(encoding="utf-8"))
         return {
             "city": city,
@@ -398,7 +417,19 @@ def get_weather(city: str, forecast_days: int = 3) -> dict[str, Any]:
             "note": "Using offline weather fixture. Set WEATHER_MODE=live for Open-Meteo.",
         }
 
-    lat, lon = coords
+    try:
+        lat, lon, geo_meta = _resolve_city_coords(city)
+    except Exception as exc:
+        fixture = json.loads(WEATHER_FIXTURE.read_text(encoding="utf-8"))
+        return {
+            "city": city,
+            "mode": "fixture_fallback",
+            "error": f"Geocoding failed: {exc}",
+            "source_url": fixture.get("source_url"),
+            "daily": fixture.get("daily"),
+            "is_fixture": True,
+        }
+
     query = urllib.parse.urlencode(
         {
             "latitude": lat,
@@ -430,6 +461,7 @@ def get_weather(city: str, forecast_days: int = 3) -> dict[str, Any]:
         "source_url": url,
         "latitude": lat,
         "longitude": lon,
+        "geocode": geo_meta,
         "daily": payload.get("daily"),
         "is_fixture": False,
     }

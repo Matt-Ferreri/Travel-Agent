@@ -2,18 +2,21 @@
 
 Team: **Matthew Ferreri**, **Aashra Amatya**
 
-LLM-driven agent that helps plan trips using weather + curated places tools, with a repeatable itinerary skill, MCP weather, permissions, and execution trees.
+LLM-driven agent that helps plan trips using weather + places tools, with a repeatable itinerary skill, MCP weather, permissions, and execution trees.
 
 ## What already works
 
 - Streamlit UI with synthetic trip preferences
 - Agent loop with step limit, permission gate, and `trace_id` events
-- Tools: `mcp_get_weather` (MCP), `get_weather` (direct), `lookup_places`
+- Tools: `mcp_get_weather` (MCP), `get_weather` (direct), `lookup_places` (OpenTripMap live or local fixture)
+- Live weather for any city via Open-Meteo geocoding + forecast (`WEATHER_MODE=live`)
 - Repeatable skill: `itinerary_planning` (auto-selected for plan/trip prompts)
 - Offline demo mode for tests (scripted — not the graded baseline)
 - Optional OpenAI-compatible tool-calling path (`AGENT_MODE=openai`)
 - Execution tree + JSON traces under `data/traces/`
 - Eval prompts in `eval/cases_m2.json`
+
+Food/hotel booking features are **deferred stretch** (see `docs/MILESTONE2.md`); Milestone 2 focus is weather + places + itinerary.
 
 ## Quick start (Windows PowerShell)
 
@@ -34,7 +37,8 @@ streamlit run app.py
    - `AGENT_MODE=openai`
    - `OPENAI_API_KEY=...`
    - optional: `OPENAI_MODEL=gpt-4.1-mini`
-   - optional: `WEATHER_MODE=live` for live Open-Meteo
+   - optional: `WEATHER_MODE=live` for live Open-Meteo (any city)
+   - optional: `PLACES_MODE=live` + `OPENTRIPMAP_API_KEY=...` for any-city attractions
 2. Run `streamlit run app.py`
 3. Ask: *Plan a weekend in Boston for 2 adults and 1 child: museums and outdoors, no car. Check weather and suggest places.*
 4. Submit `data/traces/<id>.json` and `data/traces/<id>.tree.txt`

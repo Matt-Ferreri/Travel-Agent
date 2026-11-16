@@ -6,6 +6,8 @@ Team: Matthew Ferreri, Aashra Amatya
 
 - Real-LLM path: set `AGENT_MODE=openai` + `OPENAI_API_KEY` in `.env`
 - Tools: `mcp_get_weather` (MCP stdio server), `get_weather` (direct), `lookup_places`
+- Weather live mode: Open-Meteo forecast + geocoding (any city); fixture for offline tests
+- Places live mode: OpenTripMap (`PLACES_MODE=live` + `OPENTRIPMAP_API_KEY`); Boston fixture otherwise
 - Repeatable skill: `skills/itinerary_planning/SKILL.md` auto-loaded for plan/trip prompts
 - Permissions gate before tool execution
 - Persistent synthetic trip preferences (`data/profile.json` when saved)
@@ -70,9 +72,21 @@ See `eval/cases_m2.json` (N-01, N-02, R-01, H-01, M-01, P-01).
 
 | Source | Fields | Method | Real/synthetic |
 |--------|--------|--------|----------------|
-| Open-Meteo | daily temps, precip probability, weather codes | API (`WEATHER_MODE=live`) or fixture | Real API / fixture snapshot |
-| `data/processed/places.json` | name, city, coords, category, cost, hours, transit, interests, source_url | Manual curated sample | Mostly real listings + 1 synthetic trap |
+| Open-Meteo | daily temps, precip probability, weather codes; city geocoding | API (`WEATHER_MODE=live`) or fixture | Real API / fixture snapshot |
+| OpenTripMap | attractions by city/kinds (museums, parks, …) | API (`PLACES_MODE=live`) | Real API |
+| `data/processed/places.json` | name, city, coords, category, cost, hours, transit, interests, source_url | Manual curated sample / fixture fallback | Mostly real listings + 1 synthetic trap |
 | `default_preferences.json` / `profile.json` | budget, travelers, interests, transportation | Synthetic | Synthetic |
+
+## Explicitly deferred (post–Milestone 2 stretch)
+
+Do **not** expand core M2 scope into lodging/dining until weather + places + graded traces are solid:
+
+| Stretch idea | Status |
+|--------------|--------|
+| “I already have a hotel” checkbox / `has_hotel` pref | Deferred |
+| Cuisine multi-select prefs | Deferred |
+| `lookup_food` / restaurant listings | Deferred (reuse OpenTripMap later if needed) |
+| `lookup_hotels` + nightly rates in budget | Deferred (needs hotel pricing API for real rates) |
 
 ## Independent investigation (reminder)
 

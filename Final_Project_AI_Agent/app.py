@@ -59,6 +59,7 @@ with st.sidebar:
         st.success("Saved to local data/profile.json")
     st.write("Mode:", os.getenv("AGENT_MODE", "demo"))
     st.write("Weather:", os.getenv("WEATHER_MODE", "fixture"))
+    st.write("Places:", os.getenv("PLACES_MODE", "fixture"))
 
 prompt = st.text_input(
     "Ask the agent",

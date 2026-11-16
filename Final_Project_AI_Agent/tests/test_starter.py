@@ -11,7 +11,7 @@ os.environ["PLACES_MODE"] = "fixture"
 from agent import run_agent, format_execution_tree
 from permissions.policy import check_tool
 from memory.store import load_profile, save_profile
-from tools.registry import lookup_places, get_weather, execute_tool
+from tools.registry import lookup_places, get_weather, execute_tool, _resolve_city_coords
 from skills.loader import select_skill_for_prompt, list_skills
 from mcp_integration.client import list_mcp_tools
 
@@ -103,6 +103,12 @@ class TravelBaselineTests(unittest.TestCase):
         weather = get_weather("Boston", forecast_days=3)
         self.assertTrue(weather.get("is_fixture"))
         self.assertIn("daily", weather)
+
+    def test_resolve_city_coords_local_cache(self):
+        lat, lon, meta = _resolve_city_coords("Boston")
+        self.assertAlmostEqual(lat, 42.3601, places=3)
+        self.assertAlmostEqual(lon, -71.0589, places=3)
+        self.assertEqual(meta.get("source"), "local_cache")
 
     def test_block_unauthorized_model_tool_call(self):
         class RogueModel:
