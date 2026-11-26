@@ -87,6 +87,35 @@ class TravelBaselineTests(unittest.TestCase):
         unclear = resolve_trip_dates("Plan a Boston trip with museums", today=wednesday)
         self.assertEqual(unclear.status, "needs_clarification")
 
+    def test_resolve_relative_dates(self):
+        wednesday = date(2026, 11, 25)
+        tomorrow = resolve_trip_dates("What's the weather in Boston tomorrow?", today=wednesday)
+        self.assertEqual(tomorrow.status, "resolved")
+        self.assertEqual(tomorrow.source, "relative")
+        self.assertEqual(tomorrow.start_date, date(2026, 11, 26))
+        self.assertEqual(tomorrow.end_date, date(2026, 11, 26))
+
+        in_two = resolve_trip_dates("Plan Boston in 2 days", today=wednesday)
+        self.assertEqual(in_two.source, "relative")
+        self.assertEqual(in_two.start_date, date(2026, 11, 27))
+
+        from_now = resolve_trip_dates("Boston museums 2 days from now", today=wednesday)
+        self.assertEqual(from_now.start_date, date(2026, 11, 27))
+
+        next_three = resolve_trip_dates("Plan the next 3 days in Boston", today=wednesday)
+        self.assertEqual(next_three.trip_dates, ["2026-11-25", "2026-11-26", "2026-11-27"])
+
+        next_friday = resolve_trip_dates("Boston next Friday", today=wednesday)
+        self.assertEqual(next_friday.start_date, date(2026, 11, 27))
+
+        # Explicit dates still beat relative phrasing.
+        mixed = resolve_trip_dates(
+            "Tomorrow in Boston on 2026-11-28 to 2026-11-29",
+            today=wednesday,
+        )
+        self.assertEqual(mixed.source, "explicit")
+        self.assertEqual(mixed.start_date, date(2026, 11, 28))
+
     def test_ask_before_weather_when_dates_missing(self):
         result = run_agent("Plan a Boston trip with museums and outdoors, no car")
         self.assertEqual(result["stopped_reason"], "needs_clarification")

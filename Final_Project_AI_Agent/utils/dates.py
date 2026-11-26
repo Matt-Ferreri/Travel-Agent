@@ -195,6 +195,17 @@ def _extract_explicit_dates(text: str, today: date) -> tuple[date, date] | None:
     return None
 
 
+_WEEKDAYS = {
+    "monday": 0,
+    "tuesday": 1,
+    "wednesday": 2,
+    "thursday": 3,
+    "friday": 4,
+    "saturday": 5,
+    "sunday": 6,
+}
+
+
 def upcoming_weekend(today: date | None = None) -> tuple[date, date]:
     """Next Sat–Sun that has not fully ended; on Sunday, use next week's weekend."""
     today = today or date.today()
@@ -207,9 +218,117 @@ def upcoming_weekend(today: date | None = None) -> tuple[date, date]:
     return saturday, sunday
 
 
+def _next_weekday(today: date, target: int, *, force_next: bool) -> date:
+    """Next occurrence of weekday (Mon=0). If force_next and today is that day, skip to next week."""
+    delta = (target - today.weekday()) % 7
+    if delta == 0 and force_next:
+        delta = 7
+    return today + timedelta(days=delta)
+
+
+def _extract_relative_dates(text: str, today: date) -> tuple[date, date, str] | None:
+    """
+    Parse relative phrases into (start, end, label).
+
+    Supports: today, tomorrow, day after tomorrow, in N days, N days from now,
+    next N days, next week, and next/this coming weekdays.
+    """
+    lowered = text.lower()
+
+    if re.search(r"\bday after tomorrow\b", lowered):
+        day = today + timedelta(days=2)
+        return day, day, "day after tomorrow"
+
+    if re.search(r"\btomorrow\b", lowered):
+        day = today + timedelta(days=1)
+        return day, day, "tomorrow"
+
+    if re.search(r"\btoday\b", lowered):
+        return today, today, "today"
+
+    # "in 2 days" / "2 days from now" / "2 days from today"
+    offset_match = re.search(
+        r"\b(?:in\s+(\d+)\s+days?|(\d+)\s+days?\s+from\s+(?:now|today))\b",
+        lowered,
+    )
+    if offset_match:
+        n = int(offset_match.group(1) or offset_match.group(2))
+        day = today + timedelta(days=n)
+        return day, day, f"in {n} day" + ("s" if n != 1 else "")
+
+    # "next 3 days" / "for the next 3 days" / "over the next 3 days"
+    next_n = re.search(r"\b(?:for\s+|over\s+)?(?:the\s+)?next\s+(\d+)\s+days?\b", lowered)
+    if next_n:
+        n = max(1, int(next_n.group(1)))
+        end = today + timedelta(days=n - 1)
+        return today, end, f"next {n} day" + ("s" if n != 1 else "")
+
+    # "next week" → next Monday–Sunday (or Mon–Sun starting next Monday)
+    if re.search(r"\bnext\s+week\b", lowered):
+        days_until_monday = (7 - today.weekday()) % 7
+        monday = today + timedelta(days=days_until_monday or 7)
+        sunday = monday + timedelta(days=6)
+        return monday, sunday, "next week"
+
+    # "next Friday" / "this coming Monday"
+    weekday_match = re.search(
+        r"\b(?:(next|this coming|coming)\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+        lowered,
+    )
+    if weekday_match:
+        qualifier = (weekday_match.group(1) or "").strip()
+        target = _WEEKDAYS[weekday_match.group(2)]
+        # "next Friday" skips today if today is Friday; bare "Friday" keeps today.
+        force_next = qualifier in {"next", "this coming", "coming"}
+        day = _next_weekday(today, target, force_next=force_next)
+        label = f"{(qualifier + ' ') if qualifier else ''}{weekday_match.group(2)}"
+        return day, day, label.strip()
+
+    return None
+
+
 def planning_needs_dates(text: str) -> bool:
     lowered = (text or "").lower()
     return any(hint in lowered for hint in _PLANNING_HINTS)
+
+
+def _finalize_window(
+    start: date,
+    end: date,
+    *,
+    today: date,
+    source: str,
+    reason: str,
+    label: str | None = None,
+) -> TripDateResolution:
+    if end < start:
+        start, end = end, start
+    if (end - start).days > 6:
+        return TripDateResolution(
+            status="needs_clarification",
+            reason=(
+                f"Requested window {start.isoformat()} to {end.isoformat()} is longer than "
+                "the 7-day forecast. Please pick a shorter range."
+            ),
+            source=source,
+        )
+    if start > today + timedelta(days=6):
+        return TripDateResolution(
+            status="needs_clarification",
+            reason=(
+                f"{start.isoformat()} is beyond the 7-day weather forecast window. "
+                "Please choose dates within the next week, or say 'weekend' / 'tomorrow'."
+            ),
+            source=source,
+        )
+    return TripDateResolution(
+        status="resolved",
+        start_date=start,
+        end_date=end,
+        label=label or f"{start.isoformat()} to {end.isoformat()}",
+        reason=reason,
+        source=source,
+    )
 
 
 def resolve_trip_dates(text: str, today: date | None = None) -> TripDateResolution:
@@ -217,10 +336,11 @@ def resolve_trip_dates(text: str, today: date | None = None) -> TripDateResoluti
     Resolve trip dates from user text.
 
     Priority:
-    1. Explicit dates in the prompt
-    2. "weekend" → upcoming Saturday–Sunday
-    3. Planning request with neither → needs_clarification
-    4. Otherwise not_applicable (e.g. hello / out of scope)
+    1. Explicit calendar dates in the prompt
+    2. Relative phrases (today, tomorrow, in N days, next week, weekdays, …)
+    3. "weekend" → upcoming Saturday–Sunday
+    4. Planning request with neither → needs_clarification
+    5. Otherwise not_applicable (e.g. hello / out of scope)
     """
     today = today or date.today()
     text = text or ""
@@ -228,42 +348,36 @@ def resolve_trip_dates(text: str, today: date | None = None) -> TripDateResoluti
     explicit = _extract_explicit_dates(text, today)
     if explicit:
         start, end = explicit
-        if (end - start).days > 6:
-            return TripDateResolution(
-                status="needs_clarification",
-                reason=(
-                    f"Requested window {start.isoformat()} to {end.isoformat()} is longer than "
-                    "the 7-day forecast. Please pick a shorter range."
-                ),
-                source="explicit",
-            )
-        if start > today + timedelta(days=6):
-            return TripDateResolution(
-                status="needs_clarification",
-                reason=(
-                    f"{start.isoformat()} is beyond the 7-day weather forecast window. "
-                    "Please choose dates within the next week, or say 'weekend' for the upcoming Saturday–Sunday."
-                ),
-                source="explicit",
-            )
-        return TripDateResolution(
-            status="resolved",
-            start_date=start,
-            end_date=end,
-            label=f"{start.isoformat()} to {end.isoformat()}",
-            reason="Using the specific dates from your request.",
+        return _finalize_window(
+            start,
+            end,
+            today=today,
             source="explicit",
+            reason="Using the specific dates from your request.",
+            label=f"{start.isoformat()} to {end.isoformat()}",
+        )
+
+    relative = _extract_relative_dates(text, today)
+    if relative:
+        start, end, rel_label = relative
+        return _finalize_window(
+            start,
+            end,
+            today=today,
+            source="relative",
+            reason=f"Interpreted relative date phrase as {rel_label}.",
+            label=f"{rel_label} ({start.isoformat()} to {end.isoformat()})",
         )
 
     if re.search(r"\bweekends?\b", text, re.IGNORECASE):
         start, end = upcoming_weekend(today)
-        return TripDateResolution(
-            status="resolved",
-            start_date=start,
-            end_date=end,
-            label=f"upcoming weekend ({start.isoformat()} to {end.isoformat()})",
-            reason="Interpreted 'weekend' as the upcoming Saturday–Sunday.",
+        return _finalize_window(
+            start,
+            end,
+            today=today,
             source="weekend",
+            reason="Interpreted 'weekend' as the upcoming Saturday–Sunday.",
+            label=f"upcoming weekend ({start.isoformat()} to {end.isoformat()})",
         )
 
     if planning_needs_dates(text):
@@ -271,8 +385,8 @@ def resolve_trip_dates(text: str, today: date | None = None) -> TripDateResoluti
             status="needs_clarification",
             reason=(
                 "I need trip dates before checking weather. "
-                "Say 'weekend' for the upcoming Saturday–Sunday, or give specific dates "
-                "(e.g. 2026-11-28 to 2026-11-29)."
+                "Try 'weekend', 'tomorrow', 'in 2 days', 'next 3 days', "
+                "or specific dates (e.g. 2026-11-28 to 2026-11-29)."
             ),
             source="",
         )
