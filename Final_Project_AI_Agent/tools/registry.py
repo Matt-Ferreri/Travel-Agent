@@ -64,9 +64,17 @@ _WEATHER_PARAMS = {
         },
         "forecast_days": {
             "type": "integer",
-            "description": "Number of forecast days (1-7)",
+            "description": "Number of forecast days from today (1-7). Prefer start_date/end_date when known.",
             "minimum": 1,
             "maximum": 7,
+        },
+        "start_date": {
+            "type": "string",
+            "description": "Trip start date YYYY-MM-DD (resolved weekend or user-provided).",
+        },
+        "end_date": {
+            "type": "string",
+            "description": "Trip end date YYYY-MM-DD (resolved weekend or user-provided).",
         },
     },
     "required": ["city"],
@@ -389,23 +397,61 @@ def _lookup_places_live(
     }
 
 
-def get_weather(city: str, forecast_days: int = 3) -> dict[str, Any]:
+def _parse_optional_day(raw: Any) -> date | None:
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(str(raw)[:10])
+    except ValueError as exc:
+        raise ValueError(f"Invalid date '{raw}'; use YYYY-MM-DD") from exc
+
+
+def get_weather(
+    city: str,
+    forecast_days: int = 3,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> dict[str, Any]:
+    from utils.dates import align_fixture_daily_to_window, filter_daily_to_window
+
     city_key = _normalize_city(city)
     if not city_key:
         raise ValueError("city is required")
-    days = int(forecast_days or 3)
-    days = max(1, min(7, days))
+    start = _parse_optional_day(start_date)
+    end = _parse_optional_day(end_date)
+    if (start and not end) or (end and not start):
+        raise ValueError("start_date and end_date must be provided together")
+    if start and end and end < start:
+        start, end = end, start
+
+    if start and end:
+        days = max(1, min(7, (end - date.today()).days + 1))
+        # Always fetch enough days to reach the trip end when it is still ahead.
+        days = max(days, (end - start).days + 1, int(forecast_days or 1))
+        days = max(1, min(7, days))
+    else:
+        days = int(forecast_days or 3)
+        days = max(1, min(7, days))
+
+    window_meta = {
+        "start_date": start.isoformat() if start else None,
+        "end_date": end.isoformat() if end else None,
+    }
 
     mode = os.getenv("WEATHER_MODE", "fixture").lower()
     if mode != "live":
         fixture = json.loads(WEATHER_FIXTURE.read_text(encoding="utf-8"))
+        daily = fixture.get("daily")
+        if start and end:
+            daily = align_fixture_daily_to_window(daily, start, end)
         return {
             "city": city,
             "mode": "fixture",
             "source_url": fixture.get("source_url"),
             "retrieved_at": fixture.get("retrieved_at"),
             "is_fixture": True,
-            "daily": fixture.get("daily"),
+            "daily": daily,
+            "trip_window": window_meta,
             "note": "Using offline weather fixture. Set WEATHER_MODE=live for Open-Meteo.",
         }
 
@@ -413,12 +459,16 @@ def get_weather(city: str, forecast_days: int = 3) -> dict[str, Any]:
         lat, lon, geo_meta = _resolve_city_coords(city)
     except Exception as exc:
         fixture = json.loads(WEATHER_FIXTURE.read_text(encoding="utf-8"))
+        daily = fixture.get("daily")
+        if start and end:
+            daily = align_fixture_daily_to_window(daily, start, end)
         return {
             "city": city,
             "mode": "fixture_fallback",
             "error": f"Geocoding failed: {exc}",
             "source_url": fixture.get("source_url"),
-            "daily": fixture.get("daily"),
+            "daily": daily,
+            "trip_window": window_meta,
             "is_fixture": True,
         }
 
@@ -438,14 +488,22 @@ def get_weather(city: str, forecast_days: int = 3) -> dict[str, Any]:
             payload = json.loads(resp.read().decode("utf-8"))
     except Exception as exc:
         fixture = json.loads(WEATHER_FIXTURE.read_text(encoding="utf-8"))
+        daily = fixture.get("daily")
+        if start and end:
+            daily = align_fixture_daily_to_window(daily, start, end)
         return {
             "city": city,
             "mode": "fixture_fallback",
             "error": f"Live Open-Meteo failed: {exc}",
             "source_url": fixture.get("source_url"),
-            "daily": fixture.get("daily"),
+            "daily": daily,
+            "trip_window": window_meta,
             "is_fixture": True,
         }
+
+    daily = payload.get("daily")
+    if start and end:
+        daily = filter_daily_to_window(daily, start, end)
 
     return {
         "city": city,
@@ -454,7 +512,8 @@ def get_weather(city: str, forecast_days: int = 3) -> dict[str, Any]:
         "latitude": lat,
         "longitude": lon,
         "geocode": geo_meta,
-        "daily": payload.get("daily"),
+        "daily": daily,
+        "trip_window": window_meta,
         "is_fixture": False,
     }
 
@@ -578,6 +637,8 @@ def execute_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         return run_weather_subagent(
             city=str(args.get("city", "")),
             forecast_days=int(args.get("forecast_days") or 3),
+            start_date=args.get("start_date"),
+            end_date=args.get("end_date"),
         )
     if name == "attractions_subagent":
         from subagents.attractions_agent import run_attractions_subagent
@@ -595,11 +656,15 @@ def execute_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         return call_mcp_weather(
             city=str(args.get("city", "")),
             forecast_days=int(args.get("forecast_days") or 3),
+            start_date=args.get("start_date"),
+            end_date=args.get("end_date"),
         )
     if name == "get_weather":
         return get_weather(
             city=str(args.get("city", "")),
             forecast_days=int(args.get("forecast_days") or 3),
+            start_date=args.get("start_date"),
+            end_date=args.get("end_date"),
         )
     if name == "lookup_places":
         return lookup_places(

@@ -160,12 +160,18 @@ def list_mcp_tools() -> list[dict[str, Any]]:
         return client.list_tools()
 
 
-def call_mcp_weather(city: str, forecast_days: int = 3) -> dict[str, Any]:
+def call_mcp_weather(
+    city: str,
+    forecast_days: int = 3,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> dict[str, Any]:
+    args: dict[str, Any] = {"city": city, "forecast_days": forecast_days}
+    if start_date and end_date:
+        args["start_date"] = str(start_date)[:10]
+        args["end_date"] = str(end_date)[:10]
     with McpWeatherClient() as client:
-        payload = client.call_tool(
-            "get_weather",
-            {"city": city, "forecast_days": forecast_days},
-        )
+        payload = client.call_tool("get_weather", args)
     payload = dict(payload)
     payload["mcp"] = {
         "transport": "stdio",

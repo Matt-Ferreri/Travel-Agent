@@ -38,6 +38,14 @@ WEATHER_TOOL = {
                 "minimum": 1,
                 "maximum": 7,
             },
+            "start_date": {
+                "type": "string",
+                "description": "Trip start date YYYY-MM-DD",
+            },
+            "end_date": {
+                "type": "string",
+                "description": "Trip end date YYYY-MM-DD",
+            },
         },
         "required": ["city"],
         "additionalProperties": False,
@@ -92,6 +100,8 @@ def _handle(msg: dict[str, Any]) -> None:
             result = get_weather(
                 city=str(arguments.get("city", "")),
                 forecast_days=int(arguments.get("forecast_days") or 3),
+                start_date=arguments.get("start_date"),
+                end_date=arguments.get("end_date"),
             )
             _ok(
                 req_id,

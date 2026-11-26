@@ -7,6 +7,9 @@ from typing import Any
 SYSTEM_PROMPT = (
     "You are a careful travel planning assistant. "
     "Follow any reusable skill procedure included in the user message. "
+    "Resolve trip dates before calling weather: weekend means the upcoming Saturday–Sunday; "
+    "use explicit dates when the user provides them; ask if still unclear. "
+    "Pass start_date and end_date into weather_subagent. "
     "Use weather_subagent for forecasts and attractions_subagent for tourism sites. "
     "Never invent attractions, hours, ticket URLs, or weather. "
     "If a place is missing from tool results, say so. "
@@ -20,11 +23,17 @@ class DemoModel:
     """Deterministic scripted controller, NOT an LLM. Enables testing without credentials."""
 
     def complete(self, messages: list[dict], tools: list[dict]) -> dict:
+        from utils.dates import clarification_message, resolve_trip_dates
+
         raw_user = next((m.get("content", "") for m in messages if m["role"] == "user"), "")
         # Prefer the actual request text so profile wrapper words like "trip" do not trigger tools.
         if "User request:" in raw_user:
-            user_text = raw_user.split("User request:", 1)[1].lower()
+            request_text = raw_user.split("User request:", 1)[1].strip()
+            # Drop any runtime-injected date resolution appendix from the parse target.
+            request_text = request_text.split("\n\nResolved trip", 1)[0].strip()
+            user_text = request_text.lower()
         else:
+            request_text = raw_user
             user_text = raw_user.lower()
         called = {m.get("name") for m in messages if m["role"] == "tool"}
 
@@ -61,8 +70,20 @@ class DemoModel:
                 city = "New York" if candidate in {"new york", "nyc"} else candidate.title()
                 break
 
+        date_resolution = resolve_trip_dates(request_text)
+        if wants_weather and date_resolution.status == "needs_clarification":
+            return {
+                "content": clarification_message(date_resolution),
+                "tool_calls": [],
+            }
+
         if wants_weather:
-            targets.append(("weather_subagent", {"city": city, "forecast_days": 3}))
+            weather_args: dict[str, Any] = {"city": city, "forecast_days": 3}
+            if date_resolution.status == "resolved":
+                weather_args["forecast_days"] = date_resolution.forecast_days_from()
+                weather_args["start_date"] = date_resolution.start_date.isoformat()
+                weather_args["end_date"] = date_resolution.end_date.isoformat()
+            targets.append(("weather_subagent", weather_args))
         if wants_places:
             args: dict[str, Any] = {
                 "city": city,
@@ -88,9 +109,13 @@ class DemoModel:
         observed = [m for m in messages if m["role"] == "tool"]
         if observed:
             lines = ["This is a **demo-mode** travel briefing (scripted tool choice, not an LLM):"]
+            if date_resolution.status == "resolved":
+                lines.append(f"- Trip window: {date_resolution.label} ({date_resolution.source})")
             for item in observed:
                 data = json.loads(item["content"])
                 weather = data.get("weather") if data.get("subagent") == "weather" else data
+                if data.get("subagent") == "weather" and data.get("daily"):
+                    weather = data
                 if isinstance(weather, dict) and weather.get("daily"):
                     days = weather["daily"].get("time", [])
                     highs = weather["daily"].get("temperature_2m_max", [])

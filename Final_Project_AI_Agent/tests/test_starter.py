@@ -2,6 +2,7 @@
 import os
 import tempfile
 import unittest
+from datetime import date, timedelta
 from pathlib import Path
 
 os.environ.setdefault("AGENT_MODE", "demo")
@@ -14,6 +15,7 @@ from memory.store import load_profile, save_profile
 from tools.registry import lookup_places, get_weather, execute_tool, _resolve_city_coords
 from skills.loader import select_skill_for_prompt, list_skills
 from mcp_integration.client import list_mcp_tools
+from utils.dates import resolve_trip_dates, upcoming_weekend
 
 
 class TravelBaselineTests(unittest.TestCase):
@@ -28,12 +30,19 @@ class TravelBaselineTests(unittest.TestCase):
         self.assertEqual(len(skill_events), 1)
         self.assertEqual(skill_events[0]["skill"], "itinerary_planning")
         self.assertIn("weather_subagent", result["execution_tree"])
+        date_event = next(e for e in result["trace"] if e.get("event") == "date_resolve")
+        self.assertEqual(date_event["status"], "resolved")
+        self.assertEqual(date_event["output_summary"]["source"], "weekend")
+        sat, sun = upcoming_weekend()
+        self.assertEqual(date_event["output_summary"]["trip_dates"], [sat.isoformat(), sun.isoformat()])
         weather = next(
             e
             for e in result["trace"]
             if e.get("event") == "tool_call" and e.get("tool") == "weather_subagent"
         )
         self.assertEqual(weather["status"], "ok")
+        self.assertEqual(weather.get("input_summary", {}).get("start_date"), sat.isoformat())
+        self.assertEqual(weather.get("input_summary", {}).get("end_date"), sun.isoformat())
         # Gate must appear before the matching tool_call in the trace.
         weather_perm_idx = next(
             i
@@ -49,6 +58,55 @@ class TravelBaselineTests(unittest.TestCase):
         weather_result = weather.get("result") or {}
         self.assertEqual(weather_result.get("subagent"), "weather")
         self.assertIn("mcp", (weather_result.get("weather") or {}))
+        self.assertEqual((weather_result.get("daily") or {}).get("time"), [sat.isoformat(), sun.isoformat()])
+
+    def test_resolve_weekend_and_explicit_dates(self):
+        wednesday = date(2026, 11, 25)
+        weekend = resolve_trip_dates("Plan a Boston weekend", today=wednesday)
+        self.assertEqual(weekend.status, "resolved")
+        self.assertEqual(weekend.source, "weekend")
+        self.assertEqual(weekend.start_date, date(2026, 11, 28))
+        self.assertEqual(weekend.end_date, date(2026, 11, 29))
+
+        explicit = resolve_trip_dates(
+            "Plan Boston for 2026-11-26 to 2026-11-27 with museums",
+            today=wednesday,
+        )
+        self.assertEqual(explicit.status, "resolved")
+        self.assertEqual(explicit.source, "explicit")
+        self.assertEqual(explicit.trip_dates, ["2026-11-26", "2026-11-27"])
+
+        # Explicit dates win over the weekend keyword.
+        mixed = resolve_trip_dates(
+            "Weekend ideas for Boston on 2026-11-26 to 2026-11-27",
+            today=wednesday,
+        )
+        self.assertEqual(mixed.source, "explicit")
+        self.assertEqual(mixed.start_date, date(2026, 11, 26))
+
+        unclear = resolve_trip_dates("Plan a Boston trip with museums", today=wednesday)
+        self.assertEqual(unclear.status, "needs_clarification")
+
+    def test_ask_before_weather_when_dates_missing(self):
+        result = run_agent("Plan a Boston trip with museums and outdoors, no car")
+        self.assertEqual(result["stopped_reason"], "needs_clarification")
+        self.assertEqual([e for e in result["trace"] if e.get("event") == "tool_call"], [])
+        self.assertIn("dates", result["answer"].lower())
+
+    def test_explicit_dates_passed_to_weather(self):
+        start = date.today() + timedelta(days=1)
+        end = start + timedelta(days=1)
+        prompt = f"Plan Boston museums {start.isoformat()} to {end.isoformat()}"
+        result = run_agent(prompt)
+        self.assertEqual(result["stopped_reason"], "completed")
+        weather = next(
+            e
+            for e in result["trace"]
+            if e.get("event") == "tool_call" and e.get("tool") == "weather_subagent"
+        )
+        self.assertEqual(weather["input_summary"]["start_date"], start.isoformat())
+        self.assertEqual(weather["input_summary"]["end_date"], end.isoformat())
+        self.assertEqual((weather["result"].get("daily") or {}).get("time"), [start.isoformat(), end.isoformat()])
 
     def test_non_tool_question(self):
         tools = [e for e in run_agent("Hello")["trace"] if e.get("event") == "tool_call"]
