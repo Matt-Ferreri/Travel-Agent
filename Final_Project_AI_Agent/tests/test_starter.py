@@ -28,8 +28,24 @@ class TravelBaselineTests(unittest.TestCase):
         self.assertEqual(len(skill_events), 1)
         self.assertEqual(skill_events[0]["skill"], "itinerary_planning")
         self.assertIn("weather_subagent", result["execution_tree"])
-        weather = next(e for e in result["trace"] if e.get("tool") == "weather_subagent")
+        weather = next(
+            e
+            for e in result["trace"]
+            if e.get("event") == "tool_call" and e.get("tool") == "weather_subagent"
+        )
         self.assertEqual(weather["status"], "ok")
+        # Gate must appear before the matching tool_call in the trace.
+        weather_perm_idx = next(
+            i
+            for i, e in enumerate(result["trace"])
+            if e.get("event") == "permission_decision" and e.get("tool") == "weather_subagent"
+        )
+        weather_call_idx = next(
+            i
+            for i, e in enumerate(result["trace"])
+            if e.get("event") == "tool_call" and e.get("tool") == "weather_subagent"
+        )
+        self.assertLess(weather_perm_idx, weather_call_idx)
         weather_result = weather.get("result") or {}
         self.assertEqual(weather_result.get("subagent"), "weather")
         self.assertIn("mcp", (weather_result.get("weather") or {}))

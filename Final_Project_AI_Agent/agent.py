@@ -1,4 +1,4 @@
-"""Minimal agent loop: skill -> model -> tool call -> permission -> observation -> model."""
+"""Minimal agent loop: skill -> model -> permission -> tool call -> observation -> model."""
 from __future__ import annotations
 
 import json
@@ -115,6 +115,18 @@ def run_agent(prompt: str, profile: dict | None = None, model: Any = None, max_s
         for call in calls:
             name = call["function"]["name"]
             decision = check_tool(name)
+            # Log the gate decision before any tool execution so the trace matches runtime order.
+            events.append(
+                {
+                    "event": "permission_decision",
+                    "trace_id": trace_id,
+                    "timestamp": _utc_now(),
+                    "component": "permissions.policy",
+                    "tool": name,
+                    "status": decision.status,
+                    "reason": decision.reason,
+                }
+            )
             tool_started = time.perf_counter()
             record: dict[str, Any] = {
                 "event": "tool_call",
@@ -152,17 +164,6 @@ def run_agent(prompt: str, profile: dict | None = None, model: Any = None, max_s
             record["result_summary"] = _summarize_result(result)
             record["result"] = result
             events.append(record)
-            events.append(
-                {
-                    "event": "permission_decision",
-                    "trace_id": trace_id,
-                    "timestamp": _utc_now(),
-                    "component": "permissions.policy",
-                    "tool": name,
-                    "status": decision.status,
-                    "reason": decision.reason,
-                }
-            )
             # Trace keeps the full result; LLM only sees a compact observation (avoids HTTP 413).
             messages.append(
                 {
